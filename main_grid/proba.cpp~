@@ -1,0 +1,19 @@
+#include "../source/GRID.h"
+#include "../source/routines.h"
+#include <cstdio>
+
+int main()
+{
+  printf("yeah\n");
+  GRID grid;
+  printf("yeah\n");
+  grid.InitGrid(0.001, 0.1, 1.0, 5.0);
+  printf("yeah\n");
+  int N;
+  double * omega;
+  grid.GetGrid(N,omega);
+  double* f = new double[N];
+  for(int i=0; i<N; i++) f[i] = sqr(omega[i]);
+  PrintFunc("func",N,f,omega);
+  return 0;
+}

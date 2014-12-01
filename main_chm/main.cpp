@@ -1,0 +1,60 @@
+//#include "mpi.h"
+#include "../source/CHM.h"
+#include "../source/routines.h"
+
+using namespace std;
+
+int main(int argc, char* argv[])
+{
+  GRID grid;
+
+  CHM chm;
+  chm.SetMaxItsAccrAndCoefs(300, 1e-4, 2, (const int []){1,2});
+  chm.SetBroyden(false, false, 5e-4); 
+  chm.SetHaltOnIterations(false);
+  chm.SetStartFromInsulator(false);
+  chm.SetStartFromPrevious(false);
+  //chm.SetUseBethe(true);
+  //WriteCubicDosToFile();
+  //exit(0);
+  
+//--------------------PARAMS-----------------//
+  double Ts [] = {0.05,0.1};
+  double Us [] = {10.0/*0.0001,0.5,1.0,2.0,4.0,8.0, 16.0*/};
+ 
+  int Nlins [] = {/*1000,*/ 1500/*, 2000, 2500*/};
+  int Nlogs [] = {/*2000, 3000,*/ 3600/*, 5000*/};
+  double ns [] = {0.5};									
+  int DOSs [] = {DOStypes::CubicLattice};
+  double etas [] = {/*5e-2, 1e-2, 5e-3, 1e-3, 1e-4,*/5e-3};
+//------------------------------------------//
+   for (int k=0; k<sizeof(ns)/sizeof(double); k++)
+    for (int i=0; i<sizeof(Ts)/sizeof(double); i++)
+     for (int j=0; j<sizeof(Us)/sizeof(double); j++)
+      for (int l=0; l<sizeof(DOSs)/sizeof(int); l++)
+       for (int m3=0; m3<sizeof(etas)/sizeof(double); m3++)
+        {  
+           double U = Us[j];
+           double T = Ts[i];
+           int Nlog = 5000;
+           int Nlin = 2500;    
+           double eta = etas[m3];    
+  
+
+           //grid.InitGrid(0,Nlin,6.0,0.0,0.0);
+           grid.InitGrid(Nlog,Nlin, 18.0,3.0,3e-6);
+           chm.SetGrid(&grid);
+           chm.SetSIAMeta(eta);
+           chm.SetUseBethe(false/*!(m3==0)*/);
+
+           //chm.InitDeltaFromFile("CHM.n0.500.U5.000.T0.050.Nlin3000.Nlog3000",3000,3000,6.0,1.0,1e-10);
+                  
+          //-----run CHM-------//
+          double mu;
+          //if (j==1) chm.SetStartFromPrevious(true);
+          chm.Run(ns[k], U, T, 0.5, mu, DOStypes::FromFileSymmetric,"CubicLatticeDOS");          
+        }
+//------------------------------------------//
+  
+  return 0;
+}

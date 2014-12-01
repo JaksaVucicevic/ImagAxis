@@ -1,0 +1,232 @@
+#include "IASIAM.h"
+#include "GRID.h"
+#include "routines.h"
+#include "Broyden.h"
+#include "IAGRID.h"
+
+IASIAM::IASIAM()
+{
+
+}
+
+IASIAM::~IASIAM()
+{
+  delete [] Delta;
+  delete [] G0_f;
+  delete [] G0_t;
+  delete [] SOCSigma_t;
+  delete [] SOCSigma_f;
+  delete [] Sigma_f;
+  delete [] G_f;
+  delete [] G_t;
+}
+
+void IASIAM::Initialize(IAGRID* iagrid, double U, double epsilon)
+{
+  //dummy variables
+  double domega;
+  double dtau;
+
+  iagrid->GetGrid(N,N,T,omega,tau,domega,dtau);
+  
+  this->iagrid = iagrid;
+  this->U = U;
+  this->epsilon = epsilon;
+
+  Delta = new complex<double>[N];
+  G0_f = new complex<double>[N];
+  G0_t = new complex<double>[N];
+  SOCSigma_t = new complex<double>[N];
+  SOCSigma_f = new complex<double>[N];
+  Sigma_f = new complex<double>[N];
+  G_f = new complex<double>[N];
+  G_t = new complex<double>[N];
+
+  FirstIteration = true;
+  mu0 = 0.0;
+  mu = 0.0;
+
+  fft.Initialize(iagrid);
+
+  Initialized = true;
+}
+
+void IASIAM::Set_CHM_DOS(int N_CHM, double* omega_CHM, double* dos)
+{
+  this->N_CHM = N_CHM;
+  this->omega_CHM = omega_CHM;
+  this->dos = dos;
+} 
+
+void IASIAM::PrintResults(const char* FN)
+{
+  char fn[50] = "intermediate";
+  if (FN==NULL)
+    sprintf(fn,"intermediate");
+  else
+    sprintf(fn,FN);
+  
+  FILE* OutputFile = fopen(fn,"w");
+  for (int n = 0; n<N; n++)
+    fprintf(OutputFile,"%.15le %.15le %.15le %.15le %.15le %.15le %.15le %.15le %.15le %.15le %.15le %.15le %.15le %.15le %.15le %.15le\n",
+                       omega[n], tau[n],				// 1 2
+                       real(G0_f[n]), imag(G0_f[n]), 			// 3 4
+                       real(G0_t[n]), imag(G0_t[n]),			// 5 6
+                       real(SOCSigma_t[n]), imag(SOCSigma_t[n]), 	// 7 8
+                       real(SOCSigma_f[n]), imag(SOCSigma_f[n]),	// 9 10
+                       real(Sigma_f[n]), imag(Sigma_f[n]),		// 11 12
+                       real(G_f[n]), imag(G_f[n]), 			// 13 14
+                       real(G_t[n]), imag(G_t[n]) );			// 15 16
+  fclose(OutputFile);
+}
+//-------------------------------------------------------------------------------------//
+
+void IASIAM::get_G0_f()
+{
+  for (int i=0; i<N; i++)
+    G0_f[i] = 1.0 / ( ii*omega[i] + mu0 - Delta[i] ); 
+}
+
+void IASIAM::get_G0_f(complex<double>* V)
+{
+  mu0 = real(V[0]);
+
+  get_G0_f();
+
+  V[0] = mu0 + get_n(G0_f) - n;
+} 
+
+void IASIAM::get_SOCSigma_t()
+{
+  for (int i=0; i<N; i++)
+  {
+    SOCSigma_t[i] = sqr(U) * G0_t[i] * G0_t[i] * conj(G0_t[i]);
+  }
+}
+
+void IASIAM::get_Sigma_f()
+{  
+  for (int i=0; i<N; i++)
+    Sigma_f[i] =  U*n + SOCSigma_f[i] 
+                      / ( (double)1.0 - complex<double>(b) * SOCSigma_f[i] );
+}
+
+void IASIAM::get_b()
+{
+  if (n==0.5) b = 0.0;
+  else
+    b = ( (1.0-2.0*n) * U - mu + (mu0 + epsilon + U*n) ) 
+        /            ( n*(1.0-n)*sqr(U) );
+}
+
+double IASIAM::get_n(complex<double>* G_f)
+{
+  double sum = 0;
+  for(int i = 0; i<N; i++)
+    sum += real(G_f[i]);
+  printf("  >> mu0: %.6f mu: %.6f get_n: %.6f\n", mu0, mu, 2*T*sum + 0.5);
+  return 2*T*sum + 0.5;
+}
+
+void IASIAM::get_G_f_CHM()
+{
+  get_b();
+  get_Sigma_f();
+  
+  for (int i=0; i<N; i++) G_f[i] = 1.0/(mu + ii*omega[i] - Sigma_f[i] - Delta[i]);
+
+  /*for (int i=0; i<N; i++)
+  {  complex<double>* g= new complex<double>[N_CHM];
+     
+     for (int j=0; j<N_CHM; j++)
+       g[j] = dos[j] / ( mu + ii*omega[i] - omega_CHM[j] - Sigma_f[i]); 
+     
+     G_f[i] = TrapezIntegral(N_CHM, g, omega_CHM);
+
+     delete [] g;
+  }*/
+}
+
+void IASIAM::get_G_f_CHM(complex<double>* V)
+{
+  mu = real(V[0]);
+
+  get_G_f_CHM();
+
+  V[0] = mu + get_n(G_f) - n;
+} 
+
+void IASIAM::Run_CHM(double n, complex<double>* Delta, 	 			//input
+                 complex<double>* G, complex<double>* Sigma, double &mu_out)	//output
+{ 
+  if (!Initialized) { printf("IASIAM not INITIALIZED!"); exit(1); }
+
+  printf("IASIAM >> Run_CHM\n");
+ 
+  for (int i = 0; i < N; i++) this->Delta[i] = Delta[i];
+  this->n = n;
+  mu = U*n;
+
+//----------------- Solve SIAM --------------------//
+  //get G0_f
+  complex<double>* V = new complex<double>[1];
+  
+  if (n==0.5)
+    get_G0_f();
+  else
+  {
+    V[0] = mu0; //initial guess is always the last mu0. in first DMFT iteration it is 0
+    UseBroyden<IASIAM>(1, 100, 1e-6, &IASIAM::get_G0_f, this, V);
+  }
+
+  //PrintFunc("G0_f",N,G0_f,omega);
+ 
+  //get G0_t
+  fft.FtoT(G0_f,G0_t);
+
+  //PrintFunc("G0_t",N,G0_t,tau);
+
+  //get G_t, and copy G0 to G if FirstIteration
+  if (FirstIteration) for (int i=0; i<N; i++) G_f[i] = G0_f[i];
+  fft.FtoT(G_f,G_t);
+
+  //get SOCSigma_t
+  get_SOCSigma_t();
+
+  //PrintFunc("SOCSigma_t",N,SOCSigma_t,tau);
+
+  //get SOCSigma_f 
+  fft.TtoF(SOCSigma_t, SOCSigma_f);
+
+  //PrintFunc("SOCSigma_f",N,SOCSigma_f,omega);
+
+  //get G_f
+  if (n==0.5)
+    get_G_f_CHM();
+  else
+  {
+    V[0] = mu;
+    UseBroyden<IASIAM>(1, 100, 1e-6, &IASIAM::get_G_f_CHM, this, V);
+  }
+
+  printf("  b = %.5f\n",b);
+  //PrintFunc("Sigma_f",N,Sigma_f,omega);  
+  //PrintFunc("G_f",N,G_f,omega);  
+//-------------------------------------------------//
+
+  //output results
+  for (int i=0; i<N; i++) 
+  {
+    G[i] = G_f[i];
+    Sigma[i] = Sigma_f[i];
+  }
+  mu_out = mu;
+  
+  //remember first iteration has already been done
+  FirstIteration = false;
+  
+  //release memory
+  delete [] V;
+
+  printf("...exiting IASIAM::Run_CHM\n");
+}

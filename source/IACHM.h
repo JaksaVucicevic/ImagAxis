@@ -1,0 +1,59 @@
+//*********************************************************//
+//                 IACHM on Half Filling                     //
+//                        by Jaksa Vucicevic January 2010  //
+//                                                         //
+//*********************************************************//
+
+#include <cstdio>
+#include <cmath> 
+#include <iostream>
+#include <complex>
+
+class IAGRID;
+class IASIAM;
+
+using namespace std;
+
+class IACHM
+{
+  private:
+    bool Initialized;
+       
+    //--parameters--
+    int N;			//number of points in arrays
+    double n;
+    double T;			//temperature 
+    double U;			//interaction
+
+    double Accr;		//accr demand
+    int MAXITS;
+
+    double t;			//hopping
+    int DOStype;
+    bool StartFromInsulator;	//start from
+
+    //options
+    bool HaltOnIterations;
+    bool UseBethe;
+
+    //Green's functions and Sigmas
+    complex<double>* Delta;
+    complex<double>* G;
+    complex<double>* Sigma;
+   
+    //Fast Fourier Transform object
+    IAGRID* iagrid;
+    double* omega;
+    double* tau;
+    IASIAM* iasiam;
+
+  public:
+    //--user interface--
+    IACHM();
+    ~IACHM();
+    void Initialize(IAGRID* iagrid, double t, double Accr, int DOStype);
+    void Run(double n, double U);
+
+    void SetHaltOnIterations(bool HaltOnIterations);
+    
+};

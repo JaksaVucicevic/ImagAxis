@@ -1,0 +1,160 @@
+#include <cmath>
+#include <complex>
+#include <cstdio>
+#include "Resampler.h"
+#include "routines.h"
+
+using namespace std;
+
+void Resampler::KernelResample( int KernelType, const double* KernelParameters, 
+                                int Nin, double* xin, double* yin, 
+                                int Nout, double* xout, double* yout )
+{
+  for(int i=0; i<Nout; i++)
+  {
+    double sum = 0.0;
+    for(int j=0; j<Nin; j++)
+      sum += Kernel( KernelType, KernelParameters, xin[j]-xout[i] ) * yin[j];
+    yout[i] = sum;
+  }
+}
+
+void   Resampler::SmartResample( int KernelType, double* KernelParameters,
+                                 int Nin, double* xin, double* yin, 
+                                 int Nout, double* xout, double* yout )
+{
+  double a_max = (xin[1]-xin[0]);
+  double a_start = 0.25*a_max;
+
+  double a_step = 0.1*a_max;
+  double a=a_start;
+  double old_integ =1e+30;
+  double diff =1e+30;
+  FILE* f = fopen("log","w");
+  while (abs(a_step)>0.0005*a_max)
+  {
+    KernelParameters[0] = a;
+    KernelResample( KernelType, KernelParameters, 
+                     Nin, xin, yin, 
+                     Nout, xout, yout );
+    double integ = AbsSecondDerivativeIntegral( Nout, xout, yout ); 
+    fprintf(f,"%.15le %.15le\n",a,integ);
+    if (integ>old_integ) a_step = -0.5*a_step;
+    a+=a_step;
+   
+    old_integ = integ;  
+  }
+  fclose(f); 
+}
+
+void Resampler::ParabolaSpline( int Nin, double* xin, double* yin, 
+                                int Nout, double* xout, double* yout )
+{
+  for(int i=0; i<Nout; i++)
+  {  int j;
+     for(j=0; j<Nin; j++)
+       if (xin[j]>xout[i]) break;
+     int offset = 0;
+     if ( abs( xin[j]-xout[i] ) > abs( xin[j-1]-xout[i] ) ) offset=-1;
+       
+     double Xtemp[3];
+     double Ytemp[3];
+     for(int k=0; k<3; k++)
+     { Xtemp[k] = xin[j-1+k+offset]-xout[i];
+       Ytemp[k] = yin[j-1+k+offset];
+     }
+     yout[i] = ParabolaFrom3points(Ytemp, Xtemp);
+  } 
+}
+
+void Resampler::CubicSpline( int Nin, double* xin, double* yin, 
+                             int Nout, double* xout, double* yout )
+{
+  for(int i=0; i<Nout; i++)
+  {  int j;
+     for(j=0; j<Nin; j++)
+       if (xin[j]>xout[i]) break;
+     if ((j>=2)and(j<=Nin-2))
+     { double Xtemp[4];
+       double Ytemp[4];
+       for(int k=0; k<4; k++)
+       { Xtemp[k] = xin[j-2+k]-xout[i];
+         Ytemp[k] = yin[j-2+k];
+       }
+       yout[i] = CubicFrom4points(Ytemp, Xtemp);
+     }
+     else
+     {
+       
+       double Xtemp[3];
+       double Ytemp[3];
+       for(int k=0; k<3; k++)
+       { Xtemp[k] = xin[k+((j==1)?0:Nin-3)]-xout[i];
+         Ytemp[k] = yin[k+((j==1)?0:Nin-3)];
+       }
+       yout[i] = ParabolaFrom3points(Ytemp, Xtemp);
+     }
+  }
+
+}
+
+double Resampler::Kernel( int KernelType, const double* KernelParameters, double dx )
+{
+  switch (KernelType)
+  {
+    case KernelTypes::Lancosz :
+    { double a = KernelParameters[0];
+
+      if (dx == 0.0) return 1.0;
+      if (abs(dx) > a) return 0.0;
+
+      double k = (a/sqr(pi*dx)) * sin(pi*dx) * sin(pi*dx/a);
+      return k;
+    }
+    case KernelTypes::DolphChebyshev :       
+    { double p =  KernelParameters[0];
+      int N = (int) KernelParameters[1];
+      double a = KernelParameters[2];
+
+      if (abs(dx*p)>N/2) return 0;
+
+      double b = cosh(acosh(pow(10.0,a)/N));
+      complex<double> sum = 0.0;
+      for(int i=0; i<N; i++)
+      {  complex<double> w0 = cos(N*acos(b*cos(pi*i/N))) / cosh(acosh(b)/N);
+         sum += w0 * exp(ii*2.0*pi*i*dx*p/N);
+      }
+      return real(sum/(double)N);
+    }
+    case KernelTypes::Poisson :
+    { double tau = KernelParameters[0];
+      double b = KernelParameters[1];
+
+      if (dx>tau*b) return 0.0;
+
+      return exp(-abs(dx/tau));
+    }
+    case KernelTypes::Gaussian :
+    { double sigma = KernelParameters[0];
+      double b = KernelParameters[1];
+
+      if (dx>b*sqr(sigma)) return 0.0;
+
+      return exp( - sqr( abs(dx)/sigma ));
+    }
+    default: return 0;
+  }
+}
+
+double Resampler::AbsSecondDerivativeIntegral( int N, double* x, double* y )
+{
+  double sum=0.0;
+  for(int i=1; i<N-1; i++)
+    sum += abs( (   (y[i+1] - y[i])/(x[i+1]-x[i])
+                  - (y[i] - y[i-1])/(x[i]-x[i-1])
+                ) 
+                / ( 0.5*(x[i+1]-x[i-1]) )
+         
+              );
+  return sum;
+}
