@@ -784,23 +784,35 @@ void PrintMatrixOnScreen(int N, int M, int** A)
 }
 
 
-
-                                
+                              
 //------------------ integral routine ---------------------//
-
 double TrapezIntegral(int N, double Y[], double X[])
 {
-  double sum = 0.0;
-  sum += Y[0]*(X[1]-X[0]) + Y[N-1]*(X[N-1]-X[N-2]);
+  
+  double sum = Y[0]*(X[1]-X[0]) + Y[N-1]*(X[N-1]-X[N-2]);
   for (int i=1; i<N-1; i++)
     sum+=Y[i]*(X[i+1]-X[i-1]);
   return sum*0.5;
 }
 
+complex<double> TrapezIntegral(int N, complex<double> Y[], double X[])
+{
+  complex<double> sum = Y[0]*complex<double>(X[1]-X[0]) +
+                         Y[N-1]*complex<double>(X[N-1]-X[N-2]);
+  for (int i=1; i<N-1; i++)
+    sum+=Y[i]*complex<double>(X[i+1]-X[i-1]);
+
+  return sum*0.5;
+}
+
+//------------------ integral routine ---------------------//
+
 double TrapezIntegralMP(int N, double Y[], double X[])
 {
+#ifdef _OMP
+
   double sum = 0.0;
-  sum += Y[0]*(X[1]-X[0]) + Y[N-1]*(X[N-1]-X[N-2]);
+  double sum0 = Y[0]*(X[1]-X[0]) + Y[N-1]*(X[N-1]-X[N-2]);
   int Nt;
   double* psum = new double[8];
   #pragma omp parallel shared(psum)
@@ -816,14 +828,22 @@ double TrapezIntegralMP(int N, double Y[], double X[])
      //printf("outside proc %d, psum = %le\n",i,psum[i]);
   }
   delete [] psum;
-  return sum*0.5;
+  return (sum+sum0)*0.5;
 
+#else
+
+  return TrapezIntegral(N,Y,X);
+
+#endif
 }
 
 complex<double> TrapezIntegralMP(int N, complex<double> Y[], double X[])
 {
+
+#ifdef _OMP
+  complex<double> sum0 = Y[0]*(X[1]-X[0]) + Y[N-1]*(X[N-1]-X[N-2]);
+
   complex<double> sum = 0.0;
-  sum += Y[0]*(X[1]-X[0]) + Y[N-1]*(X[N-1]-X[N-2]);
   int Nt;
   complex<double>* psum = new complex<double>[8];
   #pragma omp parallel shared(psum)
@@ -832,14 +852,16 @@ complex<double> TrapezIntegralMP(int N, complex<double> Y[], double X[])
     psum[tid] = 0;
     for (int i=tid+1; i<N-1; i+=Nt)
       psum[tid]+=Y[i]*(X[i+1]-X[i-1]);
-    //printf("inside proc %d, psum = %le\n",tid,psum[tid]);
   }
-  for (int i = 0; i<Nt; i++)
-  {  sum += psum[i];
-     //printf("outside proc %d, psum = %le\n",i,psum[i]);
-  }
+  for (int i = 0; i<Nt; i++) sum += psum[i];
   delete [] psum;
-  return sum*0.5;
+  return (sum + sum0)*0.5;
+
+#else
+
+  return TrapezIntegral(N,Y,X);
+
+#endif
 
 }
 
@@ -867,17 +889,7 @@ complex<double> TrapezIntegral(std::vector< complex<double> > Y, std::vector<dou
   return sum*complex<double>(0.5);
 }
 
-complex<double> TrapezIntegral(int N, complex<double> Y[], double X[])
-{
-  complex<double> sum = 0.0;
-  sum += Y[0]*complex<double>(X[1]-X[0]) + 
-         Y[N-1]*complex<double>(X[N-1]-X[N-2]);
-  
-  for (int i=1; i<N-1; i++)
-    sum+=Y[i]*complex<double>(X[i+1]-X[i-1]);
-  
-  return sum*complex<double>(0.5);
-}
+
 
 double EllipticIntegralFirstKind(double x)
 { //integration goes from 0 to 1

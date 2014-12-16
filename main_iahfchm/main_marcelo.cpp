@@ -3,26 +3,17 @@
 #include <iostream>
 #include <complex>
 #include <cstdlib>
+#include <limits>
 #include "../source/routines.h"
 #include "../source/IAHFCHM.h"
 
+double v(double epsilon)
+{
+  return pow(1.0-sqr(epsilon), 1.5);
+}
+
 int main()
-{  
-/*
-   complex<double> Gs[4] = { ii*7.59236e-04,ii*7.59417e-04,ii*7.59598e-04,ii*7.59779e-04};
-   double iws[4] = {0,1,2,3};
-   PrintFunc("mustra",4,Gs,iws);
-   FILE* f = fopen("test_cubic","w");
-   for(double x = iws[0]; x<iws[3]; x+=0.2)
-     fprintf(f,"%.15le %.15le\n",x,imag(CubicFrom4points(Gs, iws, x)));
-   fclose(f);
-
-   exit(0);
-*/
-
-
-
-
+{
    int N;
    double t;
    int metal;
@@ -65,42 +56,33 @@ int main()
        for(double U=Umax; U>Umin; U-=Ustep)
        {  iahfchm.U=U;  
           iahfchm.Run(MAX_ITS, false);
-
-          int Nn = 1000;
+ 
+          double numax = 10.0;
+          int Nn = (int) numax/(2.0*pi*T);
           complex<double>* sigma = new complex<double>[Nn];
+          complex<double>* Lambda = new complex<double>[Nn];
           double* nu = new double[Nn];
 
           for(int n=0; n<Nn; n++)
-          { sigma[n]=iahfchm.OpticalConductivity(n+1);
-            nu[n] = 2.0 * pi * T * (n+1);  
-            
+          { printf("calculating Lambda, n=%d\n",n);
+            Lambda[n] = iahfchm.Lambda(n, &v);
+            //sigma[n]=iahfchm.OpticalConductivity(n+1);
+            if (n>0) sigma[n] = (Lambda[n]-Lambda[0])/ (2.0 * pi * n);
+            else sigma[n] =  std::numeric_limits<double>::quiet_NaN();
+            nu[n] = 2.0 * pi * T * n;  
+
             char sigmaFN[300];
             sprintf(sigmaFN,"sigma.U%.3f.T%.3f",U,T);
             PrintFunc(sigmaFN,n+1,sigma,nu);
 
+            char LambdaFN[300];
+            sprintf(LambdaFN,"Lambda.U%.3f.T%.3f",U,T);
+            PrintFunc(LambdaFN,n+1,Lambda,nu);
           }
-
-/*
-          int Nnu = 1000;
-          complex<double>* sigma = new complex<double>[Nnu];
-          double* nu = new double[Nnu];
-
-          for(int n=0; n<Nnu; n++)
-          { 
-            nu[n] = 2.0 * pi * T * n; //0.05 * 2.0 * pi * T * (n+20);  
-            sigma[n]=iahfchm.OpticalConductivity(nu[n]);
-            printf("nu[%d]: %f sigma: %f .... DONE!\n",n,nu[n],real(sigma[n]));
-          
-            char sigmaFN[300];
-            sprintf(sigmaFN,"sigma.U%.3f.T%.3f",U,T);
-            PrintFunc(sigmaFN,n+1,sigma,nu);
-
-          }
-*/
 
           delete [] sigma;
+          delete [] Lambda;
           delete [] nu;
-
        }
    }
 

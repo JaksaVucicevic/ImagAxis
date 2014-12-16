@@ -72,6 +72,8 @@ void IAHFCHM::ShowStatus(int msg)
       case 2: cout << "Gf initialized!" << endl; break;
       case 3: cout << "Converged!!!" << endl; break;
       case 4: cout << "----------   Done!   ----------" << endl; break;
+      case 5: cout << "----------   FFT done   ----------" << endl; break;
+
     }
 }
 
@@ -191,12 +193,16 @@ double IAHFCHM::Run(int MAX_ITS, bool INIT_GF)
 
     fft.FtoT(G_0_f, G_t);
 
+   // ShowStatus(5);
+
     get_Sigma_t();
-   
    
      //save old Sigma_f[1] to check convergence later 
    
     fft.TtoF(Sigma_t, Sigma_f); 
+
+    //ShowStatus(5);
+
     for (int i=0; i<N; i++) Sigma_f[i]= complex<double>(0.0, imag(Sigma_f[i]));
     get_G_f();
     for (int i=0; i<N; i++) G_f[i]= complex<double>(0.0, imag(G_f[i]));
@@ -398,7 +404,7 @@ double IAHFCHM::ChargeSusceptibility()
 
 int intabs(int x) { if (x<0) return -x; else return x; };
 //complex<double> sqr(complex<double> x) {return x*x; };
-
+/*
 complex<double> IAHFCHM::OpticalConductivity(int n)
 {
   //-- bosonic frequency
@@ -438,6 +444,66 @@ complex<double> IAHFCHM::OpticalConductivity(int n)
                )
              );
       
+    }
+//    char integFN[300];
+//    sprintf(integFN,"integ.n%d.m%d",n,m);
+//    if ((m<10)and(n<10)) PrintFunc(integFN,Neps,g,eps);  
+
+    summand[m] = TrapezIntegral(Neps, g, eps);
+    sum +=  summand[m];
+  }
+  return sum;
+
+  char summandFN[200];
+  sprintf(summandFN,"summand.n%.4d",n);
+  PrintFunc(summandFN,N,summand,omega); 
+
+  delete [] iw_large;
+  delete [] Sig_large;
+  delete [] summand;
+  delete [] eps;
+  delete [] g;
+}
+*/
+complex<double> IAHFCHM::OpticalConductivity(int n, double (*v)(double))
+{
+  return (1.0/2.0*pi*n)* (Lambda(n, v) - Lambda(0, v));
+}
+
+complex<double> IAHFCHM::Lambda(int n, double (*v)(double))
+{
+  //-- bosonic frequency
+  double nu = 2.0*pi*n*Temp; 
+ 
+
+  double* iw_large = new double[2*N];
+  complex<double>* Sig_large = new complex<double>[2*N];
+  for(int i = 0; i < N; i++)
+  {
+    iw_large[N+i]    =  omega[i];
+    iw_large[N-1-i]  = -omega[i];        
+    Sig_large[N+i]   =  Sigma_f[i];
+    Sig_large[N-1-i] = -Sigma_f[i];
+  }
+
+  int Neps = 2000;
+  double* eps = new double[Neps];
+  for(int i = 0; i < Neps; i++) 
+    eps[i] = -2.0*t + i * 4.0 * t / ((double)(Neps-1));
+  complex<double>* g = new complex<double>[Neps];
+  complex<double>* summand = new complex<double>[2*N];
+  complex<double> sum = 0.0;
+  for (int m=0; m<2*N-n; m++)
+  { for(int i =0; i<Neps; i++)
+    {  g[i] = DOS(DOStypes::SemiCircle, t, eps[i]) 
+              * ( (v!=NULL) ? v(eps[i]) : 1.0 ) 
+              * 2.0 
+              * ( 1.0
+                  / ( ( ii*iw_large[m] - eps[i] - Sig_large[m] ) 
+                       * 
+                      ( ii*iw_large[m+n] - eps[i] - Sig_large[m+n] ) 
+                    )
+                );
     }
 //    char integFN[300];
 //    sprintf(integFN,"integ.n%d.m%d",n,m);

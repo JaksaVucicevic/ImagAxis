@@ -85,7 +85,9 @@ class IAHFCHM
     double DoubleOccupancy();
     complex<double> InternalEnergy();
     double ChargeSusceptibility();
-    complex<double> OpticalConductivity(int n);
+    //complex<double> OpticalConductivity(int n);
+    complex<double> OpticalConductivity(int n, double (*v)(double)=NULL);
+    complex<double> Lambda(int n, double (*v)(double)=NULL); //current-current correlator
     complex<double> OpticalConductivity(double nu);
     complex<double> OpticalConductivity2(double nu);
 
